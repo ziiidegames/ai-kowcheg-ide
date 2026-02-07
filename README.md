@@ -1,5 +1,7 @@
 # AI Kowcheg IDE
 
+[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/YOUR-USERNAME/ai-kowcheg-ide)
+
 **Visual AI Content Generation Platform** - Create AI-powered content with visual workflows using React Flow and Ollama.
 
 ## Features
