@@ -1,6 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { ollama } from "@/lib/ollama"
+import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
@@ -27,15 +29,59 @@ import {
   RefreshCw
 } from "lucide-react"
 
+interface OllamaModel {
+  name: string
+  size: number
+  modified_at: string
+  digest: string
+}
+
 export default function ModelsPage() {
   const [searchQuery, setSearchQuery] = useState("")
+  const [models, setModels] = useState<OllamaModel[]>([])
+  const [loading, setLoading] = useState(true)
+  const [ollamaStatus, setOllamaStatus] = useState<'online' | 'offline'>('offline')
+  const { toast } = useToast()
 
-  // Пример данных моделей (потом будем загружать из Ollama API)
-  const models = [
-    { name: "llama3:8b", size: "4.7 GB", type: "Chat", status: "ready", memory: "5.2 GB" },
-    { name: "codellama:13b", size: "7.4 GB", type: "Code", status: "ready", memory: "8.1 GB" },
-    { name: "mistral:7b", size: "4.1 GB", type: "Chat", status: "downloading", progress: 67 },
-  ]
+  useEffect(() => {
+    loadModels()
+  }, [])
+
+  const loadModels = async () => {
+    setLoading(true)
+    try {
+      const status = await ollama.checkStatus()
+      setOllamaStatus(status.status === 'online' ? 'online' : 'offline')
+
+      if (status.status === 'online' && status.models) {
+        setModels(status.models)
+      }
+    } catch (error) {
+      console.error('Failed to load models:', error)
+      toast({
+        title: "Error",
+        description: "Failed to connect to Ollama. Make sure it's running.",
+        variant: "destructive"
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const formatBytes = (bytes: number) => {
+    if (bytes === 0) return '0 B'
+    const k = 1024
+    const sizes = ['B', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
+  }
+
+  const getModelType = (name: string) => {
+    if (name.includes('code')) return 'Code'
+    if (name.includes('llama')) return 'Chat'
+    if (name.includes('mistral')) return 'Chat'
+    return 'General'
+  }
 
   return (
     <SidebarProvider
@@ -60,8 +106,8 @@ export default function ModelsPage() {
                 </p>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm">
-                  <RefreshCw className="mr-2 h-4 w-4" />
+                <Button variant="outline" size="sm" onClick={loadModels} disabled={loading}>
+                  <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                   Refresh
                 </Button>
                 <Button>
@@ -79,8 +125,10 @@ export default function ModelsPage() {
                   <Brain className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">12</div>
-                  <p className="text-xs text-muted-foreground">3 running, 9 stopped</p>
+                  <div className="text-2xl font-bold">{models.length}</div>
+                  <p className="text-xs text-muted-foreground">
+                    {ollamaStatus === 'online' ? 'Connected' : 'Offline'}
+                  </p>
                 </CardContent>
               </Card>
               <Card>
@@ -89,8 +137,10 @@ export default function ModelsPage() {
                   <HardDrive className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">45.2 GB</div>
-                  <p className="text-xs text-muted-foreground">of 500 GB available</p>
+                  <div className="text-2xl font-bold">
+                    {formatBytes(models.reduce((acc, m) => acc + m.size, 0))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">{models.length} models</p>
                 </CardContent>
               </Card>
               <Card>
@@ -155,43 +205,57 @@ export default function ModelsPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {models.map((model) => (
-                          <TableRow key={model.name}>
-                            <TableCell className="font-medium">
-                              <div className="flex items-center gap-2">
-                                <Brain className="h-4 w-4 text-muted-foreground" />
-                                {model.name}
-                              </div>
-                            </TableCell>
-                            <TableCell>{model.size}</TableCell>
-                            <TableCell>
-                              <Badge variant="outline">{model.type}</Badge>
-                            </TableCell>
-                            <TableCell>{model.memory}</TableCell>
-                            <TableCell>
-                              {model.status === "downloading" ? (
-                                <div className="flex items-center gap-2">
-                                  <Progress value={model.progress} className="w-20" />
-                                  <span className="text-sm">{model.progress}%</span>
-                                </div>
-                              ) : (
-                                <Badge variant={model.status === "ready" ? "secondary" : "default"}>
-                                  {model.status}
-                                </Badge>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-2">
-                                <Button size="sm" variant="outline">
-                                  <Play className="h-4 w-4" />
-                                </Button>
-                                <Button size="sm" variant="outline">
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
+                        {loading ? (
+                          <TableRow>
+                            <TableCell colSpan={6} className="text-center py-8">
+                              <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2" />
+                              <p className="text-sm text-muted-foreground">Loading models...</p>
                             </TableCell>
                           </TableRow>
-                        ))}
+                        ) : models.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={6} className="text-center py-8">
+                              <p className="text-sm text-muted-foreground">
+                                {ollamaStatus === 'offline'
+                                  ? 'Ollama is offline. Start it with: ollama serve'
+                                  : 'No models installed. Install with: ollama pull llama3:8b'}
+                              </p>
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          models
+                            .filter(m => m.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                            .map((model) => (
+                              <TableRow key={model.digest}>
+                                <TableCell className="font-medium">
+                                  <div className="flex items-center gap-2">
+                                    <Brain className="h-4 w-4 text-muted-foreground" />
+                                    {model.name}
+                                  </div>
+                                </TableCell>
+                                <TableCell>{formatBytes(model.size)}</TableCell>
+                                <TableCell>
+                                  <Badge variant="outline">{getModelType(model.name)}</Badge>
+                                </TableCell>
+                                <TableCell className="text-xs text-muted-foreground">
+                                  {new Date(model.modified_at).toLocaleDateString()}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant="secondary">Ready</Badge>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex justify-end gap-2">
+                                    <Button size="sm" variant="outline" title="Load model">
+                                      <Play className="h-4 w-4" />
+                                    </Button>
+                                    <Button size="sm" variant="outline" title="Delete model">
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))
+                        )}
                       </TableBody>
                     </Table>
                   </CardContent>

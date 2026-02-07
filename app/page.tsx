@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
 import {
@@ -8,7 +9,9 @@ import {
 } from "@/components/ui/sidebar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
+import { ollama } from "@/lib/ollama"
 import {
   Code2,
   Brain,
@@ -17,10 +20,36 @@ import {
   Rocket,
   Zap,
   Shield,
-  Activity
+  Activity,
+  CheckCircle,
+  XCircle,
+  Loader2
 } from "lucide-react"
 
 export default function Page() {
+  const [ollamaStatus, setOllamaStatus] = useState<'checking' | 'online' | 'offline'>('checking')
+  const [modelsCount, setModelsCount] = useState(0)
+  const [hasLlama3, setHasLlama3] = useState(false)
+
+  useEffect(() => {
+    loadDashboardData()
+  }, [])
+
+  const loadDashboardData = async () => {
+    try {
+      const status = await ollama.checkStatus()
+      setOllamaStatus(status.status === 'online' ? 'online' : 'offline')
+
+      if (status.models) {
+        setModelsCount(status.models.length)
+      }
+
+      setHasLlama3(status.hasLlama3 || false)
+    } catch (error) {
+      console.error('Failed to load dashboard data:', error)
+      setOllamaStatus('offline')
+    }
+  }
   return (
     <SidebarProvider
       style={
@@ -44,9 +73,15 @@ export default function Page() {
                 </p>
               </div>
               <div className="flex gap-2">
-                <Button>
+                <Badge variant={ollamaStatus === 'online' ? 'default' : 'destructive'} className="h-8 px-3">
+                  {ollamaStatus === 'checking' && <Loader2 className="h-3 w-3 mr-2 animate-spin" />}
+                  {ollamaStatus === 'online' && <CheckCircle className="h-3 w-3 mr-2" />}
+                  {ollamaStatus === 'offline' && <XCircle className="h-3 w-3 mr-2" />}
+                  Ollama {ollamaStatus}
+                </Badge>
+                <Button onClick={loadDashboardData}>
                   <Rocket className="mr-2 h-4 w-4" />
-                  Quick Start
+                  Refresh
                 </Button>
               </div>
             </div>
@@ -61,9 +96,9 @@ export default function Page() {
                   <Brain className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">3</div>
+                  <div className="text-2xl font-bold">{modelsCount}</div>
                   <p className="text-xs text-muted-foreground">
-                    Active and ready
+                    {ollamaStatus === 'online' ? (hasLlama3 ? 'Llama 3 ready' : 'Available') : 'Offline'}
                   </p>
                 </CardContent>
               </Card>
@@ -75,9 +110,11 @@ export default function Page() {
                   <Activity className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-green-500">Online</div>
+                  <div className={`text-2xl font-bold ${ollamaStatus === 'online' ? 'text-green-500' : ollamaStatus === 'checking' ? 'text-yellow-500' : 'text-red-500'}`}>
+                    {ollamaStatus === 'checking' ? 'Checking...' : ollamaStatus === 'online' ? 'Online' : 'Offline'}
+                  </div>
                   <p className="text-xs text-muted-foreground">
-                    All systems operational
+                    {ollamaStatus === 'online' ? 'All systems operational' : 'Check Ollama service'}
                   </p>
                 </CardContent>
               </Card>
