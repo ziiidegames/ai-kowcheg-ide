@@ -7,6 +7,13 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { ollama, OllamaMessage } from '@/lib/ollama'
 import {
   Send,
@@ -16,6 +23,13 @@ import {
   AlertCircle,
   CheckCircle
 } from 'lucide-react'
+
+interface OllamaModel {
+  name: string
+  size: number
+  modified_at: string
+  digest: string
+}
 
 interface AIChatProps {
   systemPrompt?: string
@@ -27,13 +41,15 @@ interface AIChatProps {
 export function AIChat({
   systemPrompt = "You are a helpful AI assistant in The Ark system.",
   onResponse,
-  placeholder = "Ask Llama 3 anything...",
+  placeholder = "Ask AI anything...",
   className = ""
 }: AIChatProps) {
   const [messages, setMessages] = useState<OllamaMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<'checking' | 'online' | 'offline'>('checking')
+  const [availableModels, setAvailableModels] = useState<OllamaModel[]>([])
+  const [selectedModel, setSelectedModel] = useState('llama3:8b')
   const scrollRef = useRef<HTMLDivElement>(null)
 
   // Проверка статуса Ollama при загрузке
@@ -52,8 +68,15 @@ export function AIChat({
     const status = await ollama.checkStatus()
     setStatus(status.status === 'online' ? 'online' : 'offline')
 
-    if (status.status === 'online' && !status.hasLlama3) {
-      console.warn('Llama 3:8b not found. Install it with: ollama pull llama3:8b')
+    if (status.status === 'online' && status.models) {
+      setAvailableModels(status.models)
+
+      // Выбираем llama3:8b по умолчанию или первую доступную модель
+      if (status.hasLlama3) {
+        setSelectedModel('llama3:8b')
+      } else if (status.models.length > 0) {
+        setSelectedModel(status.models[0].name)
+      }
     }
   }
 
@@ -73,14 +96,16 @@ export function AIChat({
         : updatedMessages
 
       const response = await ollama.chat({
+        model: selectedModel,
         messages: chatMessages,
         temperature: 0.7,
         max_tokens: 2048,
       })
 
-      const assistantMessage: OllamaMessage = {
+      const assistantMessage: OllamaMessage & { model?: string } = {
         role: 'assistant',
-        content: response.message.content
+        content: response.message.content,
+        model: selectedModel
       }
 
       setMessages([...updatedMessages, assistantMessage])
@@ -103,11 +128,22 @@ export function AIChat({
 
   return (
     <div className={`flex flex-col h-full ${className}`}>
-      {/* Status Bar */}
-      <div className="flex items-center justify-between p-2 border-b">
-        <div className="flex items-center gap-2">
+      {/* Status Bar with Model Selector */}
+      <div className="flex items-center justify-between p-2 border-b gap-2">
+        <div className="flex items-center gap-2 flex-1">
           <Bot className="h-4 w-4" />
-          <span className="text-sm font-medium">Llama 3:8b</span>
+          <Select value={selectedModel} onValueChange={setSelectedModel} disabled={status !== 'online' || availableModels.length === 0}>
+            <SelectTrigger className="h-8 w-[180px]">
+              <SelectValue placeholder="Select model" />
+            </SelectTrigger>
+            <SelectContent>
+              {availableModels.map((model) => (
+                <SelectItem key={model.digest} value={model.name}>
+                  {model.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <Badge variant={status === 'online' ? 'default' : status === 'offline' ? 'destructive' : 'secondary'}>
           {status === 'checking' && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
@@ -122,7 +158,7 @@ export function AIChat({
         <div className="space-y-4">
           {messages.length === 0 && (
             <div className="text-center text-muted-foreground text-sm py-8">
-              Start a conversation with Llama 3
+              Start a conversation with {selectedModel}
             </div>
           )}
 
@@ -141,7 +177,7 @@ export function AIChat({
               </div>
               <div className="flex-1">
                 <div className="text-xs text-muted-foreground mb-1">
-                  {message.role === 'user' ? 'You' : 'Llama 3'}
+                  {message.role === 'user' ? 'You' : ((message as any).model || selectedModel)}
                 </div>
                 <div className="prose prose-sm dark:prose-invert max-w-none">
                   {message.content}
@@ -156,7 +192,7 @@ export function AIChat({
                 <Bot className="h-4 w-4" />
               </div>
               <div className="flex-1">
-                <div className="text-xs text-muted-foreground mb-1">Llama 3</div>
+                <div className="text-xs text-muted-foreground mb-1">{selectedModel}</div>
                 <div className="flex items-center gap-2">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   <span className="text-sm text-muted-foreground">Thinking...</span>
